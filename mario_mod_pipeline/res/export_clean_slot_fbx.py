@@ -152,8 +152,36 @@ def build_manifest(files, slot):
         struct.unpack_from("<I", files[52], record[3] + 4)[0]: index
         for index, record in enumerate(skeleton_headers)
     }
-    skeleton_index = paired[model_hash] if model_hash in paired else SHARED_SKELETON[slot]
-    group = skeleton_groups(parse_subentries(table))[skeleton_index]
+    groups = skeleton_groups(parse_subentries(table))
+    if model_hash in paired:
+        skeleton_index = paired[model_hash]
+    elif slot in SHARED_SKELETON:
+        skeleton_index = SHARED_SKELETON[slot]
+    else:
+        model = models[slot]
+        b103 = next(record for record in model if record.kind == 0xB103)
+        required_hashes = {
+            struct.unpack_from("<I", files[52], offset)[0]
+            for offset in range(b103.offset, b103.offset + b103.size, 4)
+        }
+        scored = []
+        for index, candidate in enumerate(groups):
+            mapping = next((record for record in candidate if record.kind == 0x7105), None)
+            if mapping is None:
+                continue
+            available_hashes = {
+                struct.unpack_from("<I", files[53], offset)[0]
+                for offset in range(mapping.offset, mapping.offset + mapping.size, 8)
+            }
+            scored.append((len(required_hashes & available_hashes), index))
+        if not scored or max(scored)[0] == 0:
+            raise ValueError(f"could not find a compatible skeleton for slot {slot}")
+        skeleton_index = max(scored)[1]
+        print(
+            f"slot {slot}: selected shared skeleton {skeleton_index} "
+            f"({max(scored)[0]}/{len(required_hashes)} model bone hashes matched)"
+        )
+    group = groups[skeleton_index]
     by_kind = {record.kind: record for record in group}
     map_record = by_kind[0x7105]
     hash_to_id = {
@@ -191,13 +219,18 @@ def main():
     for slot in args.slots:
         base_name = args.name or f"slot_{slot}"
         folder = args.output / base_name if args.name else args.output / f"slot_{slot}"
+        folder = folder.resolve()
         folder.mkdir(parents=True, exist_ok=True)
         manifest = folder / f"{base_name}.lm3-fbx.json"
         fbx = folder / f"{base_name}.fbx"
         report = folder / f"{base_name}.fbx-validation.json"
         manifest.write_text(json.dumps(build_manifest(files, slot), separators=(",", ":")), encoding="utf-8")
         subprocess.run([str(BLENDER), "--background", "--factory-startup", "--python", str(BRIDGE), "--", "export", str(manifest), str(fbx)], check=True)
+        if not fbx.is_file():
+            raise RuntimeError(f"Blender did not create the expected FBX: {fbx}")
         subprocess.run([str(BLENDER), "--background", "--factory-startup", "--python", str(BRIDGE), "--", "validate", str(fbx), str(report)], check=True)
+        if not report.is_file():
+            raise RuntimeError(f"Blender did not create the validation report: {report}")
         print(f"exported and validated slot {slot}: {fbx}")
 
 

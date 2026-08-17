@@ -1,0 +1,12 @@
+{
+    "TMP": "../tmp",
+    "CONFIG": "config/config_mario",
+    "DEFAULT_ASSETS": "mario",
+    "MOD_NAME": "mario_playable",
+    "BLENDER_PATH": "C:/Program Files/Blender Foundation/Blender 4.0/blender.exe",
+    "YUZU_MOD_PATH": "%USERPROFILE%/AppData/Roaming/yuzu/load/0100DCA0064A6000/mario_playable/romfs",
+    "MOD_DEST_PATH": "_mods/mario_playable/romfs",
+    "SKIP_PACKAGE": true,
+    "VERIFY": true,
+    "FBX": "Mario_to_luigi6.fbx"
+}

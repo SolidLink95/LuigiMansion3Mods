@@ -1,0 +1,10 @@
+{
+    "TMP": "../tmp",
+    "CONFIG": "config/green_knight_armor_only",
+    "DEFAULT_ASSETS": "green_knight",
+    "MOD_NAME": "green_knight_hd_playable",
+    "MOD_DEST_PATH": "_mods/green_knight_hd_playable/romfs",
+    "SKIP_PACKAGE": true,
+    "VERIFY": false,
+    "FBX": "just_armor.fbx"
+}

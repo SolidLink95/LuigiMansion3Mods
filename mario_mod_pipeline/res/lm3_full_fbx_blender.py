@@ -8,9 +8,18 @@ import bpy
 from mathutils import Vector
 
 
-REFERENCE_ARMATURE = (
+LOCAL_REFERENCE_ARMATURE = (
     Path(__file__).resolve().parent.parent
     / "Mario LM3" / "Mario_to_luigi3.armature.json"
+)
+REPOSITORY_REFERENCE_ARMATURE = (
+    Path(__file__).resolve().parents[4]
+    / "tmp" / "ml3" / "Mario LM3" / "Mario_to_luigi3.armature.json"
+)
+REFERENCE_ARMATURE = (
+    LOCAL_REFERENCE_ARMATURE
+    if LOCAL_REFERENCE_ARMATURE.is_file()
+    else REPOSITORY_REFERENCE_ARMATURE
 )
 
 
@@ -26,8 +35,13 @@ def export(manifest_path, fbx_path):
     bpy.context.view_layer.objects.active = armature
     armature.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
-    reference = json.loads(REFERENCE_ARMATURE.read_text(encoding="utf-8"))
     expected_names = {item["name"] for item in manifest["bones"]}
+    slot_reference = (
+        Path(__file__).resolve().parent.parent
+        / "armatures" / f"slot_{manifest['slot']}.armature.json"
+    )
+    reference_path = slot_reference if slot_reference.is_file() else REFERENCE_ARMATURE
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
     if set(reference) != expected_names:
         raise RuntimeError(
             f"reference armature has {len(reference)} bones but manifest has "

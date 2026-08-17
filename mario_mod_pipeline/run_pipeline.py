@@ -17,30 +17,50 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
 CWD = Path(__file__).resolve().parent
+JSON_INPUT = CWD / "green_knight.json"
+# JSON_INPUT = CWD / "params_mario.json"
+
 
 def load_locals():
     local_json = CWD.parent / "local.json"
-    return json.loads(local_json.read_text())
+    result = json.loads(local_json.read_text())
+    return {k: Path(v) for k, v in result.items()}
+
+
+def load_input():
+    return json.loads(JSON_INPUT.read_text())
+
 
 LOCAL_DATA = load_locals()
-ROOT = CWD.parent 
+INPUT_DATA = load_input()
+
+ROOT = CWD.parent
 RES = CWD / "res"
-TMP = ROOT / "tmp"
+TMP = CWD / INPUT_DATA["TMP"]
 HELPERS = CWD / "helpers"
-CONFIG = CWD / "config"
-DEFAULT_ASSETS = TMP / "mario"
-ROMFS = LOCAL_DATA['romfs']
-MOD_NAME = "mario_playable"
-BLENDER_PATH = LOCAL_DATA['blender']
-YUZU_MOD_PATH = Path(os.path.expandvars(f"%USERPROFILE%/AppData/Roaming/yuzu/load/0100DCA0064A6000/{MOD_NAME}/romfs"))
-MOD_DEST_PATH = TMP / f"_mods/{MOD_NAME}/romfs"
-SKIP_PACKAGE = True
-VERIFY = True
+CONFIG = CWD / INPUT_DATA["CONFIG"]
+
+DEFAULT_ASSETS = TMP / INPUT_DATA["DEFAULT_ASSETS"]
+MOD_NAME = INPUT_DATA["MOD_NAME"]
+YUZU_MOD_PATH = Path(
+    os.path.expandvars(
+        f"%USERPROFILE%/AppData/Roaming/yuzu/load/0100DCA0064A6000/{MOD_NAME}/romfs"
+    )
+)
+MOD_DEST_PATH = TMP / INPUT_DATA["MOD_DEST_PATH"]
+SKIP_PACKAGE = INPUT_DATA.get("SKIP_PACKAGE", True)
+VERIFY = INPUT_DATA.get("VERIFY", True)
+FBX = DEFAULT_ASSETS / INPUT_DATA["FBX"]
+
+BLENDER_PATH = LOCAL_DATA["blender"]
+ROMFS = LOCAL_DATA["romfs"]
 
 
 def path(value: str) -> Path:
     return Path(value).expanduser().resolve()
+
 
 def copy_to_yuzu():
     if YUZU_MOD_PATH.is_dir():
@@ -88,26 +108,66 @@ def parse_skeleton_groups(values: list[str]) -> dict[int, int]:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--clean-archive", type=path, default=ROMFS / "global.dict")
-    result.add_argument("--source-fbx", type=path, default=DEFAULT_ASSETS / "Mario_to_luigi6.fbx")
-    result.add_argument("--mesh-data", type=path, default=DEFAULT_ASSETS / "Mario_to_luigi3.meshes.json")
+    result.add_argument("--source-fbx", type=path, default=FBX)
+    result.add_argument(
+        "--mesh-data", type=path, default=DEFAULT_ASSETS / "Mario_to_luigi3.meshes.json"
+    )
     result.add_argument("--texture-dir", type=path, default=DEFAULT_ASSETS / "tex")
-    result.add_argument("--replacement-rules", type=path, default=CONFIG / "replacement_rules.json")
-    result.add_argument("--texture-redirects", type=path, default=CONFIG / "textures.json")
+    result.add_argument(
+        "--replacement-rules", type=path, default=CONFIG / "replacement_rules.json"
+    )
+    result.add_argument(
+        "--texture-redirects", type=path, default=CONFIG / "textures.json"
+    )
     result.add_argument("--blender", type=path, default=BLENDER_PATH)
-    result.add_argument("--astcenc", default="astcenc-avx2.exe", help="ASTC encoder executable or path")
-    result.add_argument("--temp-dir", type=path, default=ROOT / "tmp/ml3/mario_astc_temp")
+    result.add_argument(
+        "--astcenc", default="astcenc-avx2.exe", help="ASTC encoder executable or path"
+    )
+    result.add_argument(
+        "--temp-dir", type=path, default=ROOT / "tmp/ml3/mario_astc_temp"
+    )
     result.add_argument("--build-output", type=path, default=MOD_DEST_PATH)
-    result.add_argument("--package-output", type=path, default=ROOT / f"tmp/ml3/clean_tex/_gb_result/{MOD_NAME}")
-    result.add_argument("--installer-template", type=path, default=CWD / "installer/install_mario_playable.py")
+    result.add_argument(
+        "--package-output",
+        type=path,
+        default=ROOT / f"tmp/ml3/clean_tex/_gb_result/{MOD_NAME}",
+    )
+    result.add_argument(
+        "--installer-template",
+        type=path,
+        default=CWD / "installer/install_mario_playable.py",
+    )
     result.add_argument("--mod-name", default=MOD_NAME)
     result.add_argument("--sections", nargs="+", type=int, default=[0, 52, 54, 65])
     result.add_argument("--targets", nargs="+", type=int, default=[27, 28, 29, 30])
-    result.add_argument("--skeleton-groups", nargs="+", default=["27:27", "28:27", "29:28", "30:28"], metavar="SLOT:GROUP")
+    result.add_argument(
+        "--skeleton-groups",
+        nargs="+",
+        default=["27:27", "28:27", "29:28", "30:28"],
+        metavar="SLOT:GROUP",
+    )
     result.add_argument("--blender-up-offset", type=float, default=0.128029)
-    result.add_argument("--skip-extract", type=bool, default=False, help="reuse --mesh-data")
-    result.add_argument("--skip-build", type=bool, default=False, help="reuse --build-output")
-    result.add_argument("--skip-package", action="store_true", help="do not create compact installer files")
-    result.add_argument("--verify", action="store_true", help="install into a temporary clean archive and compare hashes")
+    result.add_argument(
+        "--skip-extract", type=bool, default=False, help="reuse --mesh-data"
+    )
+    result.add_argument(
+        "--skip-build", type=bool, default=False, help="reuse --build-output"
+    )
+    result.add_argument(
+        "--skip-package",
+        action="store_true",
+        help="do not create compact installer files",
+    )
+    result.add_argument(
+        "--verify",
+        action="store_true",
+        help="install into a temporary clean archive and compare hashes",
+    )
+    result.add_argument(
+        "--skip-deploy",
+        action="store_true",
+        help="build without copying the result into Yuzu's mod directory",
+    )
     return result
 
 
@@ -116,7 +176,9 @@ def main() -> int:
     skeleton_groups = parse_skeleton_groups(args.skeleton_groups)
     missing_groups = set(args.targets) - skeleton_groups.keys()
     if missing_groups:
-        raise ValueError(f"missing skeleton groups for target slots: {sorted(missing_groups)}")
+        raise ValueError(
+            f"missing skeleton groups for target slots: {sorted(missing_groups)}"
+        )
 
     require_file(args.clean_archive, "clean Global dictionary")
     require_file(args.clean_archive.with_suffix(".data"), "clean Global data")
@@ -126,12 +188,28 @@ def main() -> int:
         print(f"[BLENDER] Running Blender")
         require_file(args.source_fbx, "source FBX")
         require_file(args.blender, "Blender")
+        require_file(args.replacement_rules, "replacement rules")
+        configured_meshes = list(
+            json.loads(args.replacement_rules.read_text(encoding="utf-8"))[
+                "mesh_targets"
+            ]
+        )
         args.mesh_data.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [str(args.blender), "--background", "--factory-startup", "--python",
-             str(RES / "extract_fbx_replacement.py"), "--", str(args.source_fbx),
-             str(args.mesh_data)],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            [
+                str(args.blender),
+                "--background",
+                "--factory-startup",
+                "--python",
+                str(RES / "extract_fbx_replacement.py"),
+                "--",
+                str(args.source_fbx),
+                str(args.mesh_data),
+                *configured_meshes,
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
 
     if not args.skip_build:
@@ -164,16 +242,26 @@ def main() -> int:
     if not args.skip_package:
         require_file(args.installer_template, "installer template")
         sys.path.insert(0, str(HELPERS))
-        packager = load_module("mario_pipeline_packager", RES / "package_mario_global_sections.py")
+        packager = load_module(
+            "mario_pipeline_packager", RES / "package_mario_global_sections.py"
+        )
         packager.ORIGINAL = args.clean_archive
         packager.BUILT = built_dictionary
         packager.OUTPUT = args.package_output
         packager.INSTALLER_TEMPLATE = args.installer_template
         old_argv = sys.argv
         try:
-            sys.argv = [str(RES / "package_mario_global_sections.py"), "--built", str(built_dictionary),
-                        "--output", str(args.package_output), "--mod-name", args.mod_name,
-                        "--sections", *(str(section) for section in args.sections)]
+            sys.argv = [
+                str(RES / "package_mario_global_sections.py"),
+                "--built",
+                str(built_dictionary),
+                "--output",
+                str(args.package_output),
+                "--mod-name",
+                args.mod_name,
+                "--sections",
+                *(str(section) for section in args.sections),
+            ]
             packager.main()
         finally:
             sys.argv = old_argv
@@ -185,22 +273,33 @@ def main() -> int:
         args.package_output.mkdir(parents=True, exist_ok=True)
         verify_root = ROOT / "tmp" / "ml3"
         verify_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="mario_pipeline_verify_", dir=verify_root) as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="mario_pipeline_verify_", dir=verify_root
+        ) as temporary:
             romfs = Path(temporary)
             for suffix in (".dict", ".data"):
-                shutil.copy2(args.clean_archive.with_suffix(suffix), romfs / f"global{suffix}")
+                shutil.copy2(
+                    args.clean_archive.with_suffix(suffix), romfs / f"global{suffix}"
+                )
             subprocess.run([sys.executable, str(installer), str(romfs)], check=True)
             for name in ("global.dict", "global.data"):
                 actual = sha256(romfs / name)
                 expected = sha256(args.build_output / name)
                 if actual != expected:
-                    raise RuntimeError(f"installer verification failed for {name}: {actual} != {expected}")
-        print("installer verification passed: global.dict and global.data match the build")
+                    raise RuntimeError(
+                        f"installer verification failed for {name}: {actual} != {expected}"
+                    )
+        print(
+            "installer verification passed: global.dict and global.data match the build"
+        )
 
     print(f"Mario pipeline complete: {args.build_output}")
     if not args.skip_package:
         print(f"compact installer: {args.package_output}")
-    copy_to_yuzu()
+    if args.skip_deploy:
+        print("[SKIP] Yuzu deployment skipped")
+    else:
+        copy_to_yuzu()
     return 0
 
 

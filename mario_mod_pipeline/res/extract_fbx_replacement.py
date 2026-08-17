@@ -12,7 +12,24 @@ output = Path(sys.argv[sys.argv.index("--") + 2])
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.fbx(filepath=str(source), axis_forward="-Z", axis_up="Y")
 result = {}
-for object_name in ("submesh_5", "submesh_6", "submesh_7", "submesh_14"):
+result["_bone_parents"] = {
+    bone.name: bone.parent.name if bone.parent else None
+    for armature in bpy.data.armatures
+    for bone in armature.bones
+}
+arguments = sys.argv[sys.argv.index("--") + 1:]
+configured_meshes = arguments[2:]
+mesh_names = configured_meshes or sorted(
+    (
+        obj.name
+        for obj in bpy.data.objects
+        if obj.type == "MESH" and obj.name.startswith("submesh_")
+    ),
+    key=lambda name: int(name.removeprefix("submesh_")),
+)
+if not mesh_names:
+    raise RuntimeError("FBX has no mesh objects named submesh_<number>")
+for object_name in mesh_names:
     obj = bpy.data.objects.get(object_name)
     if obj is None or obj.type != "MESH":
         raise RuntimeError(f"FBX has no mesh object named {object_name}")

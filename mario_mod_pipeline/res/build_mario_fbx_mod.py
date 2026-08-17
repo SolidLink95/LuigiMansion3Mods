@@ -12,13 +12,16 @@ from pathlib import Path
 
 from PIL import Image
 
-
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path[:0] = [str(ROOT / "src-tauri" / "misc"), str(ROOT / "tmp" / "ml3")]
-from lm3_import_mummigi import texture_records
+from lm3_import_mummigi import decode_archive, texture_records
 from lm3_slot_swap import (
-    decompress_entry, group_models, parse_subentries, read_archive, replace_entry,
+    decompress_entry,
+    group_models,
+    parse_subentries,
+    read_archive,
+    replace_entry,
 )
 
 CLEAN = ROOT / "tmp" / "ml3" / "clean" / "global.dict"
@@ -49,10 +52,130 @@ def mesh_record(file52, model, mesh_index):
     cursor = b004.offset
     for index in range(mesh_index):
         descriptor = b003.offset + index * 0x40
-        cursor += 16 if struct.unpack_from("<I", file52, descriptor + 0x28)[0] != 0xFFFFFFFF else 12
+        cursor += (
+            16
+            if struct.unpack_from("<I", file52, descriptor + 0x28)[0] != 0xFFFFFFFF
+            else 12
+        )
     descriptor = b003.offset + mesh_index * 0x40
-    size = 16 if struct.unpack_from("<I", file52, descriptor + 0x28)[0] != 0xFFFFFFFF else 12
+    size = (
+        16
+        if struct.unpack_from("<I", file52, descriptor + 0x28)[0] != 0xFFFFFFFF
+        else 12
+    )
     return descriptor, cursor, size, b005
+
+
+def material_bindings(file52, model):
+    """Return each mesh material range and its writable B007 binding field."""
+    b003 = next(record for record in model if record.kind == 0xB003)
+    b006 = next(record for record in model if record.kind == 0xB006)
+    b007 = next(record for record in model if record.kind == 0xB007)
+    mesh_count = b003.size // 0x40
+    marker = bytes.fromhex(
+        "FFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF00000000"
+    )
+    raw = []
+    position = b007.offset
+    while len(raw) < mesh_count and position + len(marker) <= b007.offset + b007.size:
+        if file52[position:position + len(marker)] == marker:
+            stored_position = position - 4
+            relative = struct.unpack_from("<I", file52, stored_position)[0] - 8
+            raw.append((stored_position, relative))
+        position += 4
+    if len(raw) != mesh_count:
+        raise ValueError("could not resolve every mesh material binding")
+    boundaries = sorted({relative for _position, relative in raw} | {b006.size})
+    return [
+        {
+            "binding": stored_position,
+            "relative": relative,
+            "offset": b006.offset + relative,
+            "size": min(value for value in boundaries if value > relative) - relative,
+        }
+        for stored_position, relative in raw
+    ]
+
+
+def apply_material_swap(files, models, rule):
+    source_path = CLEAN.parent / rule["source_archive"]
+    source_files = {
+        index: bytearray(payload)
+        for index, payload in decode_archive(source_path)[-1].items()
+        if index in (0, 52, 63, 65)
+    }
+    missing_source_sections = {0, 52, 63, 65} - source_files.keys()
+    if missing_source_sections:
+        raise ValueError(
+            f"Persistent archive lacks decoded sections {sorted(missing_source_sections)}"
+        )
+    source_models = group_models(parse_subentries(source_files[0]))
+    source_slot = int(rule["source_slot"])
+    source_mesh = int(rule["source_mesh"])
+    source_binding = material_bindings(
+        source_files[52], source_models[source_slot]
+    )[source_mesh]
+    template = bytes(source_files[52][
+        source_binding["offset"]:source_binding["offset"] + source_binding["size"]
+    ])
+
+    texture_copies = set()
+    for slot_text, mesh_indices in rule["target_meshes"].items():
+        slot = int(slot_text)
+        mesh_indices = [int(value) for value in mesh_indices]
+        bindings = material_bindings(files[52], models[slot])
+        b006 = next(record for record in models[slot] if record.kind == 0xB006)
+        payload = bytearray(template)
+        replacements = {
+            int(source, 16): int(target, 16)
+            for source, target in rule["texture_refs"][slot_text].items()
+        }
+        replace_u32_in_place(payload, replacements)
+        texture_copies.update(replacements.items())
+        copied = []
+        for mesh_index in mesh_indices:
+            destination = bindings[mesh_index]
+            if len(template) > destination["size"]:
+                discarded = template[destination["size"]:]
+                if any(discarded):
+                    raise ValueError(
+                        f"slot {slot} mesh {mesh_index} Knight material has nonzero "
+                        f"data beyond its {destination['size']:#x}-byte allocation"
+                    )
+            material_size = min(len(template), destination["size"])
+            start = destination["offset"]
+            files[52][start:start + material_size] = payload[:material_size]
+            copied.append(bytes(files[52][start:start + material_size]))
+        if len(set(copied)) != 1:
+            raise AssertionError(f"slot {slot} body and hat material copies differ")
+        print(
+            f"slot {slot}: deep-copied Persistent {source_slot} mesh {source_mesh} "
+            f"material independently to body and hat ({material_size:#x} bytes each)"
+        )
+
+    source_textures = texture_records(source_files[0], source_files[63])
+    target_textures = texture_records(files[0], files[63])
+    for source_hash, target_hash in sorted(texture_copies):
+        source_header, source_image = source_textures[source_hash]
+        target_header, target_image = target_textures[target_hash]
+        if source_header.size != target_header.size or source_image.size != target_image.size:
+            raise ValueError(
+                f"Knight texture {source_hash:08X} does not fit Global "
+                f"{target_hash:08X} allocation"
+            )
+        header = bytearray(source_files[63][
+            source_header.offset:source_header.offset + source_header.size
+        ])
+        struct.pack_into("<I", header, 0, target_hash)
+        files[63][target_header.offset:target_header.offset + target_header.size] = header
+        files[65][target_image.offset:target_image.offset + target_image.size] = source_files[65][
+            source_image.offset:source_image.offset + source_image.size
+        ]
+        print(
+            f"imported Persistent Knight texture {source_hash:08X} as "
+            f"Global {target_hash:08X}"
+        )
+    return {target_hash for _source_hash, target_hash in texture_copies}
 
 
 def find_mesh(file52, model, hashes):
@@ -124,7 +247,7 @@ def reserve_range(free, start, size):
                 replacement.append([region_start, start])
             if end < region_end:
                 replacement.append([end, region_end])
-            free[index:index + 1] = replacement
+            free[index : index + 1] = replacement
             return
     raise ValueError(f"mesh buffer range {start}:{end} is unavailable")
 
@@ -167,28 +290,48 @@ def skeleton_id_to_hash(files, group):
     return result
 
 
-def skin_from_fbx(vertex_weights, model, id_to_hash, file52, preserve_weights=False):
+def skin_from_fbx(
+    vertex_weights, model, id_to_hash, file52, preserve_weights=False,
+    bone_parents=None,
+):
     b103 = next(record for record in model if record.kind == 0xB103)
-    hashes = [struct.unpack_from("<I", file52, b103.offset + offset)[0]
-              for offset in range(0, b103.size, 4)]
+    hashes = [
+        struct.unpack_from("<I", file52, b103.offset + offset)[0]
+        for offset in range(0, b103.size, 4)
+    ]
     hash_to_b103 = {bone_hash: index for index, bone_hash in enumerate(hashes)}
     output = bytearray()
+    bone_parents = bone_parents or {}
     for vertex_index, influences in enumerate(vertex_weights):
-        resolved = []
+        resolved_by_bone = {}
         for name, weight in influences:
             if not name.startswith("bone_"):
                 continue
-            bone_id = int(name[5:])
-            if bone_id not in id_to_hash:
-                raise ValueError(f"FBX bone {name} is missing from target skeleton")
-            bone_hash = id_to_hash[bone_id]
-            if bone_hash not in hash_to_b103:
+            candidate = name
+            visited = set()
+            local_bone = None
+            while candidate is not None and candidate not in visited:
+                visited.add(candidate)
+                if candidate.startswith("bone_"):
+                    bone_id = int(candidate[5:])
+                    bone_hash = id_to_hash.get(bone_id)
+                    if bone_hash in hash_to_b103:
+                        local_bone = hash_to_b103[bone_hash]
+                        break
+                candidate = bone_parents.get(candidate)
+            if local_bone is None:
                 raise ValueError(
-                    f"FBX bone {name}/{bone_hash:08X} is missing from target B103"
+                    f"FBX bone {name} and its parents are missing from target B103"
                 )
-            resolved.append((hash_to_b103[bone_hash], float(weight)))
-        resolved = [(bone, weight) for bone, weight in resolved
-                    if math.isfinite(weight) and weight > 1e-8]
+            resolved_by_bone[local_bone] = (
+                resolved_by_bone.get(local_bone, 0.0) + float(weight)
+            )
+        resolved = list(resolved_by_bone.items())
+        resolved = [
+            (bone, weight)
+            for bone, weight in resolved
+            if math.isfinite(weight) and weight > 1e-8
+        ]
         resolved.sort(key=lambda item: item[1], reverse=True)
         if preserve_weights and len(resolved) > 2:
             raise ValueError(
@@ -214,9 +357,7 @@ def skin_from_fbx(vertex_weights, model, id_to_hash, file52, preserve_weights=Fa
         elif len(resolved) == 1:
             repaired = [1.0]
         else:
-            dominant = struct.unpack(
-                "<f", struct.pack("<f", resolved[0][1] / total)
-            )[0]
+            dominant = struct.unpack("<f", struct.pack("<f", resolved[0][1] / total))[0]
             # Store the second float as the exact complement of the dominant
             # float. This guarantees their decoded sum is 1.0 while retaining
             # the original ratio as closely as float32 permits.
@@ -252,22 +393,28 @@ def skin_from_nearest_original(
         ids = struct.unpack_from("<BBBB", file54, offset)
         weights = struct.unpack_from("<ffff", file54, offset + 4)
         influences = sorted(
-            ((bone_id, weight) for bone_id, weight in zip(ids, weights)
-             if math.isfinite(weight) and weight > 1e-8),
-            key=lambda item: item[1], reverse=True,
+            (
+                (bone_id, weight)
+                for bone_id, weight in zip(ids, weights)
+                if math.isfinite(weight) and weight > 1e-8
+            ),
+            key=lambda item: item[1],
+            reverse=True,
         )[:2]
         total = sum(weight for _bone_id, weight in influences)
         if total <= 1e-8:
             if fallback_record is None:
-                raise ValueError(f"original vertex {source_vertex} has no usable skin weight")
+                raise ValueError(
+                    f"original vertex {source_vertex} has no usable skin weight"
+                )
             output.extend(fallback_record)
             continue
         if len(influences) == 1:
             repaired = [1.0]
         else:
-            dominant = struct.unpack(
-                "<f", struct.pack("<f", influences[0][1] / total)
-            )[0]
+            dominant = struct.unpack("<f", struct.pack("<f", influences[0][1] / total))[
+                0
+            ]
             repaired = [
                 dominant,
                 struct.unpack("<f", struct.pack("<f", 1.0 - dominant))[0],
@@ -304,25 +451,44 @@ def replace_u32_in_place(payload, replacements):
     return changed
 
 
-def block_height(width, height):
+ASTC_FORMATS = {
+    0x1D: (6, 6),
+    0x1E: (8, 5),
+}
+
+
+def block_height(width, height, texture_format=None):
     result = 8 if width <= 256 or height <= 256 else 16
     result = 4 if width <= 128 or height <= 128 else result
-    return 2 if width <= 64 or height <= 64 else result
+    result = 2 if width <= 64 or height <= 64 else result
+    if texture_format == 0x1D:
+        result = 4 if width <= 64 or height <= 64 else result
+        result = 2 if width <= 32 or height <= 32 else result
+        result = 1 if width <= 32 and height <= 32 else result
+    return result
 
 
 def block_address(x, y, width_blocks, height):
     width_in_gobs = (width_blocks * 16 + 63) // 64
-    gob = ((y // (8 * height)) * 512 * height * width_in_gobs
-           + (x * 16 // 64) * 512 * height
-           + ((y % (8 * height)) // 8) * 512)
-    return (gob + ((x * 16 % 64) // 32) * 256 + ((y % 8) // 2) * 64
-            + ((x * 16 % 32) // 16) * 32 + (y % 2) * 16 + (x * 16 % 16))
+    gob = (
+        (y // (8 * height)) * 512 * height * width_in_gobs
+        + (x * 16 // 64) * 512 * height
+        + ((y % (8 * height)) // 8) * 512
+    )
+    return (
+        gob
+        + ((x * 16 % 64) // 32) * 256
+        + ((y % 8) // 2) * 64
+        + ((x * 16 % 32) // 16) * 32
+        + (y % 2) * 16
+        + (x * 16 % 16)
+    )
 
 
-def tile_astc(linear, width, height):
-    width_blocks = (width + 7) // 8
-    height_blocks = (height + 4) // 5
-    gob_height = block_height(width, height)
+def tile_astc(linear, width, height, block_width, block_height_pixels, texture_format):
+    width_blocks = (width + block_width - 1) // block_width
+    height_blocks = (height + block_height_pixels - 1) // block_height_pixels
+    gob_height = block_height(width, height, texture_format)
     width_gobs = (width_blocks * 16 + 63) // 64
     rows = (height_blocks + 8 * gob_height - 1) // (8 * gob_height)
     output = bytearray(rows * 512 * gob_height * width_gobs)
@@ -336,7 +502,9 @@ def tile_astc(linear, width, height):
 
 def encode_signed_bc4_block(values):
     """Encode sixteen PNG channel values as one BC4_SNORM block."""
-    signed = [max(-127, min(127, round((value / 127.5 - 1.0) * 127.0))) for value in values]
+    signed = [
+        max(-127, min(127, round((value / 127.5 - 1.0) * 127.0))) for value in values
+    ]
     high, low = max(signed), min(signed)
     if high == low:
         palette = [high] * 8
@@ -345,7 +513,7 @@ def encode_signed_bc4_block(values):
             round(((7 - step) * high + step * low) / 7) for step in range(1, 7)
         ]
     bits = 0
-    for index, value in enumerate(values):
+    for index, value in enumerate(signed):
         choice = min(range(8), key=lambda item: abs(palette[item] - value))
         bits |= choice << (index * 3)
     return bytes((high & 0xFF, low & 0xFF)) + bits.to_bytes(6, "little")
@@ -360,8 +528,11 @@ def encode_signed_bc5(image):
     for block_y in range(height_blocks):
         for block_x in range(width_blocks):
             block = [
-                pixels[min(block_x * 4 + x, width - 1), min(block_y * 4 + y, height - 1)]
-                for y in range(4) for x in range(4)
+                pixels[
+                    min(block_x * 4 + x, width - 1), min(block_y * 4 + y, height - 1)
+                ]
+                for y in range(4)
+                for x in range(4)
             ]
             # BC5 stores X and Y. The reconstructed blue channel in the PNG is
             # intentionally ignored when converting back to the game format.
@@ -375,7 +546,7 @@ def encode_signed_bc5(image):
         for x in range(width_blocks):
             source = (y * width_blocks + x) * 16
             target = block_address(x, y, width_blocks, gob_height)
-            output[target:target + 16] = linear[source:source + 16]
+            output[target : target + 16] = linear[source : source + 16]
     return bytes(output)
 
 
@@ -388,39 +559,55 @@ def encode_texture(png: Path, texture_format: int, original_payload: bytes):
             raise ValueError(f"BC5 base level exceeds the allocation for {png.name}")
         # LM3 uses a proprietary packed BC5 mip tail. Preserve that tail and
         # replace only the independently tiled full-resolution level.
-        return base + original_payload[len(base):]
+        return base + original_payload[len(base) :]
     levels = []
     for level in range(8):
         width = max(1, source.width >> level)
         height = max(1, source.height >> level)
         mip = source.resize((width, height), Image.Resampling.LANCZOS)
-        if texture_format == 0x1E:
+        if texture_format in ASTC_FORMATS:
+            block_width, block_height_pixels = ASTC_FORMATS[texture_format]
+            block_size = f"{block_width}x{block_height_pixels}"
             mip_png = TEMP / f"{png.stem}_{level}.png"
             mip_astc = TEMP / f"{png.stem}_{level}.astc"
             mip.save(mip_png)
             subprocess.run(
-                [str(ASTCENC), "-cl", str(mip_png), str(mip_astc), "8x5", "-fastest"],
-                check=True, stdout=subprocess.DEVNULL,
+                [str(ASTCENC), "-cl", str(mip_png), str(mip_astc), block_size, "-fastest"],
+                check=True,
+                stdout=subprocess.DEVNULL,
             )
             encoded = mip_astc.read_bytes()
             if encoded[:4] != bytes.fromhex("13ABA15C"):
                 raise ValueError(f"astcenc produced an invalid file for {png.name}")
-            levels.append(tile_astc(encoded[16:], width, height))
+            tiled = tile_astc(
+                encoded[16:], width, height, block_width,
+                block_height_pixels, texture_format,
+            )
+            encoded_size = sum(len(item) for item in levels)
+            if encoded_size + len(tiled) > len(original_payload):
+                # Some 6x6 allocations use a proprietary packed tail for the
+                # smallest mips. Preserve that tail once another independently
+                # tiled mip would exceed the fixed archive allocation.
+                levels.append(original_payload[encoded_size:])
+                break
+            levels.append(tiled)
         else:
-            raise ValueError(f"unsupported custom texture format 0x{texture_format:02X}")
+            raise ValueError(
+                f"unsupported custom texture format 0x{texture_format:02X}"
+            )
     return b"".join(levels)
 
 
 def main():
     dictionary, data, entries, table_offset, compressed = read_archive(CLEAN)
-    files = {index: bytearray(decompress_entry(data, entries[index], compressed))
-             for index in (0, 52, 53, 54, 63, 65)}
+    files = {
+        index: bytearray(decompress_entry(data, entries[index], compressed))
+        for index in (0, 52, 53, 54, 63, 65)
+    }
     models = group_models(parse_subentries(files[0]))
     mesh_data = json.loads(MESH_DATA.read_text(encoding="utf-8"))
     print(REPLACEMENT_RULES)
-    replacement_rules = json.loads(
-        REPLACEMENT_RULES.read_text(encoding="utf-8")
-    )
+    replacement_rules = json.loads(REPLACEMENT_RULES.read_text(encoding="utf-8"))
     configured_meshes = replacement_rules["mesh_targets"]
     skeletons = skeleton_groups(files[0])
     changed_meshes = 0
@@ -428,6 +615,8 @@ def main():
         target_indices = {}
         for name, mapping in configured_meshes.items():
             if isinstance(mapping, dict):
+                if str(slot) not in mapping:
+                    continue
                 target_indices[name] = int(mapping[str(slot)])
             elif name == "submesh_14" and mapping == "keep_existing_replacement":
                 target_indices[name] = find_mesh(
@@ -448,7 +637,7 @@ def main():
         id_to_hash = skeleton_id_to_hash(
             files, skeletons[SKELETON_GROUP_FOR_SLOT[slot]]
         )
-        for name in configured_meshes:
+        for name in target_indices:
             if name not in mesh_data:
                 raise ValueError(f"replacement FBX extraction lacks {name}")
             source = mesh_data[name]
@@ -470,7 +659,9 @@ def main():
                 files[52], models[slot], target_index
             )
             if target_size != 16:
-                raise ValueError(f"Mario {name} replacement expects a skinned target mesh")
+                raise ValueError(
+                    f"Mario {name} replacement expects a skinned target mesh"
+                )
             target_hash = struct.unpack_from("<I", files[52], target_descriptor)[0]
             old_index_offset, old_index_flags, old_vertex_count = struct.unpack_from(
                 "<III", files[52], target_descriptor + 4
@@ -486,17 +677,27 @@ def main():
                     f"exceeding the original mesh's {old_vertex_count}; aborting import"
                 )
             old_vertices = [
-                bytes(files[54][
-                    target_b005.offset + old_vertex_offset + i * 0x30:
-                    target_b005.offset + old_vertex_offset + (i + 1) * 0x30
-                ]) for i in range(old_vertex_count)
+                bytes(
+                    files[54][
+                        target_b005.offset
+                        + old_vertex_offset
+                        + i * 0x30 : target_b005.offset
+                        + old_vertex_offset
+                        + (i + 1) * 0x30
+                    ]
+                )
+                for i in range(old_vertex_count)
             ]
-            old_positions = [struct.unpack_from("<fff", record) for record in old_vertices]
+            old_positions = [
+                struct.unpack_from("<fff", record) for record in old_vertices
+            ]
             original_transform = replacement_rules.get(
                 "original_mesh_transforms", {}
             ).get(name)
             if original_transform is not None:
-                if not original_transform.get("use_original_mesh_instead_of_fbx", False):
+                if not original_transform.get(
+                    "use_original_mesh_instead_of_fbx", False
+                ):
                     raise ValueError(f"{name} original-mesh transform is not enabled")
                 position_offset = original_transform["vertex_position_offset_m"]
                 uv_offsets = original_transform[
@@ -520,7 +721,7 @@ def main():
                     struct.pack_into("<f", record, 0x0C, u + du)
                     transformed.extend(record)
                 base = target_b005.offset + old_vertex_offset
-                files[54][base:base + len(transformed)] = transformed
+                files[54][base : base + len(transformed)] = transformed
                 if replacement_rules.get("neutralize_auxiliary_vertex_data", False):
                     auxiliary_offset, sentinel_offset = struct.unpack_from(
                         "<II", files[52], target_b004 + 8
@@ -531,13 +732,15 @@ def main():
                         )
                     buffer_base = target_b005.offset
                     files[54][
-                        buffer_base + auxiliary_offset:buffer_base + sentinel_offset
+                        buffer_base + auxiliary_offset : buffer_base + sentinel_offset
                     ] = bytes(sentinel_offset - auxiliary_offset)
                     sentinel = bytes.fromhex("FFFFFFFFFF7FFF7F")
                     files[54][
-                        buffer_base + sentinel_offset:
-                        buffer_base + sentinel_offset + old_vertex_count * len(sentinel)
-                    ] = sentinel * old_vertex_count
+                        buffer_base
+                        + sentinel_offset : buffer_base
+                        + sentinel_offset
+                        + old_vertex_count * len(sentinel)
+                    ] = (sentinel * old_vertex_count)
                 changed_meshes += 1
                 print(
                     f"slot {slot} {name} (mesh {target_index}, {target_hash:08X}): "
@@ -551,7 +754,10 @@ def main():
             for position, normal, uv in zip(positions, normals, uvs):
                 nearest = min(
                     range(old_vertex_count),
-                    key=lambda i: sum((old_positions[i][axis] - position[axis]) ** 2 for axis in range(3)),
+                    key=lambda i: sum(
+                        (old_positions[i][axis] - position[axis]) ** 2
+                        for axis in range(3)
+                    ),
                 )
                 nearest_vertices.append(nearest)
                 record = bytearray(old_vertices[nearest])
@@ -564,18 +770,25 @@ def main():
             rigid_bone = rigid_mesh_bones.get(
                 name, replacement_rules.get("temporary_rigid_bone")
             )
-            preserve_fbx_weights = name in replacement_rules.get(
-                "preserve_fbx_weights", []
-            )
+            preserve_rule = replacement_rules.get("preserve_fbx_weights", [])
+            if isinstance(preserve_rule, dict):
+                preserve_fbx_weights = slot in preserve_rule.get(name, [])
+            else:
+                preserve_fbx_weights = name in preserve_rule
             if preserve_fbx_weights and rigid_bone is not None:
                 raise ValueError(
                     f"{name} cannot preserve FBX weights and use rigid_mesh_bones"
                 )
             if preserve_fbx_weights:
                 skin_payload = skin_from_fbx(
-                    weights, models[slot], id_to_hash, files[52], preserve_weights=True
+                    weights, models[slot], id_to_hash, files[52],
+                    preserve_weights=True,
+                    bone_parents=mesh_data.get("_bone_parents", {}),
                 )
-                weight_mode = "preserved FBX weights (validated, no recalculation)"
+                weight_mode = (
+                    "preserved FBX weights (validated; missing bones merged to "
+                    "closest available parent)"
+                )
             elif rigid_bone is None:
                 fallback_record = None
                 fallback_bone = replacement_rules.get("fallback_rigid_bone")
@@ -585,12 +798,15 @@ def main():
                     )
                     fallback_record = fallback_payload
                 skin_payload = skin_from_nearest_original(
-                    files[54], target_b005.offset + old_skin_offset,
-                    nearest_vertices, fallback_record
+                    files[54],
+                    target_b005.offset + old_skin_offset,
+                    nearest_vertices,
+                    fallback_record,
                 )
                 weight_mode = (
                     f"nearest-original weights; bone_{int(fallback_bone)} fallback"
-                    if fallback_bone is not None else "nearest-original weights"
+                    if fallback_bone is not None
+                    else "nearest-original weights"
                 )
             else:
                 skin_payload, local_bone = rigid_skin_for_skeleton_bone(
@@ -612,7 +828,9 @@ def main():
             # fit. Some LM3 facial meshes have additional runtime/deformation
             # relationships that assume these owned buffer locations even
             # though B003/B004 expose offsets. Relocate only as a fallback.
-            index_fits = index_width == 2 and len(index_payload) <= old_index_count * index_width
+            index_fits = (
+                index_width == 2 and len(index_payload) <= old_index_count * index_width
+            )
             skin_fits = len(skin_payload) <= old_vertex_count * 0x14
             vertex_fits = len(vertex_payload) <= old_vertex_count * 0x30
             if index_fits:
@@ -622,26 +840,44 @@ def main():
             if vertex_fits:
                 reserve_range(free, old_vertex_offset, len(vertex_payload))
             index_offset = (
-                old_index_offset if index_fits else allocate_range(free, len(index_payload))
+                old_index_offset
+                if index_fits
+                else allocate_range(free, len(index_payload))
             )
             skin_offset = (
-                old_skin_offset if skin_fits else allocate_range(free, len(skin_payload))
+                old_skin_offset
+                if skin_fits
+                else allocate_range(free, len(skin_payload))
             )
             vertex_offset = (
-                old_vertex_offset if vertex_fits else allocate_range(free, len(vertex_payload))
+                old_vertex_offset
+                if vertex_fits
+                else allocate_range(free, len(vertex_payload))
             )
             placement = (
-                "original buffers" if index_fits and skin_fits and vertex_fits
-                else "relocated " + "/".join(
-                    name for name, fits in (
-                        ("index", index_fits), ("skin", skin_fits), ("vertex", vertex_fits)
-                    ) if not fits
+                "original buffers"
+                if index_fits and skin_fits and vertex_fits
+                else "relocated "
+                + "/".join(
+                    name
+                    for name, fits in (
+                        ("index", index_fits),
+                        ("skin", skin_fits),
+                        ("vertex", vertex_fits),
+                    )
+                    if not fits
                 )
             )
             base = target_b005.offset
-            files[54][base + index_offset:base + index_offset + len(index_payload)] = index_payload
-            files[54][base + skin_offset:base + skin_offset + len(skin_payload)] = skin_payload
-            files[54][base + vertex_offset:base + vertex_offset + len(vertex_payload)] = vertex_payload
+            files[54][
+                base + index_offset : base + index_offset + len(index_payload)
+            ] = index_payload
+            files[54][
+                base + skin_offset : base + skin_offset + len(skin_payload)
+            ] = skin_payload
+            files[54][
+                base + vertex_offset : base + vertex_offset + len(vertex_payload)
+            ] = vertex_payload
             if (
                 replacement_rules.get("neutralize_auxiliary_vertex_data", False)
                 and name != "submesh_14"
@@ -653,16 +889,24 @@ def main():
                     raise ValueError(
                         f"slot {slot} {name} has invalid auxiliary buffer offsets"
                     )
-                files[54][
-                    base + auxiliary_offset:base + sentinel_offset
-                ] = bytes(sentinel_offset - auxiliary_offset)
+                files[54][base + auxiliary_offset : base + sentinel_offset] = bytes(
+                    sentinel_offset - auxiliary_offset
+                )
                 sentinel = bytes.fromhex("FFFFFFFFFF7FFF7F")
                 files[54][
-                    base + sentinel_offset:
-                    base + sentinel_offset + old_vertex_count * len(sentinel)
-                ] = sentinel * old_vertex_count
-            struct.pack_into("<III", files[52], target_descriptor + 4,
-                             index_offset, len(flat_indices), stored_vertex_count)
+                    base
+                    + sentinel_offset : base
+                    + sentinel_offset
+                    + old_vertex_count * len(sentinel)
+                ] = (sentinel * old_vertex_count)
+            struct.pack_into(
+                "<III",
+                files[52],
+                target_descriptor + 4,
+                index_offset,
+                len(flat_indices),
+                stored_vertex_count,
+            )
             struct.pack_into("<II", files[52], target_b004, skin_offset, vertex_offset)
             changed_meshes += 1
             print(
@@ -679,20 +923,32 @@ def main():
         deformation_rule = replacement_rules.get("disable_face_deformation", False)
         disable_deformation = (
             bool(deformation_rule.get(str(slot), False))
-            if isinstance(deformation_rule, dict) else bool(deformation_rule)
+            if isinstance(deformation_rule, dict)
+            else bool(deformation_rule)
         )
         if disable_deformation:
-            purge_all = replacement_rules.get(
-                "purge_face_morphs_and_transforms", False
-            )
+            purge_all = replacement_rules.get("purge_face_morphs_and_transforms", False)
             kinds = (0xB00A, 0xB00B, 0xB00C) if purge_all else (0xB00A, 0xB00B)
             for kind in kinds:
-                deformation = next(record for record in models[slot] if record.kind == kind)
+                deformation = next(
+                    record for record in models[slot] if record.kind == kind
+                )
                 struct.pack_into("<I", files[0], deformation.table_offset + 4, 0)
             label = "B00A/B00B/B00C" if purge_all else "B00A/B00B"
-            print(f"slot {slot}: disabled original {label} facial deformation/transforms")
+            print(
+                f"slot {slot}: disabled original {label} facial deformation/transforms"
+            )
+
+    material_swap = replacement_rules.get("material_swap")
+    material_texture_targets = set()
+    if material_swap:
+        material_texture_targets = apply_material_swap(files, models, material_swap)
 
     textures = texture_records(files[0], files[63])
+    preserved_texture_hashes = {
+        int(value, 16)
+        for value in replacement_rules.get("preserve_texture_hashes", [])
+    }
     configured = json.loads(TEXTURE_REDIRECTS.read_text(encoding="utf-8"))
     if not isinstance(configured, dict):
         raise ValueError("textures.json must contain a hash-to-hash object")
@@ -700,16 +956,21 @@ def main():
         int(source, 16): int(target, 16) for source, target in configured.items()
     }
     redirects = {
-        source: target for source, target in requested_redirects.items()
+        source: target
+        for source, target in requested_redirects.items()
         if source in textures and target in textures
     }
     redirected_references = 0
     for slot in TARGETS:
         material = next(record for record in models[slot] if record.kind == 0xB006)
-        payload = memoryview(files[52])[material.offset:material.offset + material.size]
+        payload = memoryview(files[52])[
+            material.offset : material.offset + material.size
+        ]
         redirected_references += replace_u32_in_place(payload, redirects)
     for source, target in sorted(redirects.items()):
-        print(f"redirected material texture {source:08X} -> existing Global {target:08X}")
+        print(
+            f"redirected material texture {source:08X} -> existing Global {target:08X}"
+        )
     for source, target in sorted(requested_redirects.items()):
         if source not in redirects:
             missing = []
@@ -723,14 +984,25 @@ def main():
             )
     for png in sorted(TEXTURES.glob("*.png")):
         texture_hash = int(png.stem, 16)
+        if texture_hash in preserved_texture_hashes:
+            print(f"skipped PNG {png.name}; preserving clean Global texture")
+            continue
+        if texture_hash in material_texture_targets:
+            print(
+                f"skipped PNG {png.name}; preserving byte-exact Persistent "
+                "Knight material texture"
+            )
+            continue
         if texture_hash in redirects:
-            print(f"skipped PNG {png.name}; materials use {redirects[texture_hash]:08X}")
+            print(
+                f"skipped PNG {png.name}; materials use {redirects[texture_hash]:08X}"
+            )
             continue
         if texture_hash not in textures:
             raise ValueError(f"PNG texture {texture_hash:08X} has no Global allocation")
         header, image = textures[texture_hash]
-        header_bytes = files[63][header.offset:header.offset + header.size]
-        original_payload = bytes(files[65][image.offset:image.offset + image.size])
+        header_bytes = files[63][header.offset : header.offset + header.size]
+        original_payload = bytes(files[65][image.offset : image.offset + image.size])
         payload = encode_texture(png, header_bytes[12], original_payload)
         if len(payload) != image.size:
             raise ValueError(
@@ -739,16 +1011,27 @@ def main():
         files[65][image.offset : image.offset + image.size] = payload
         print(f"replaced texture {png.stem} ({len(payload)} bytes, 8 ASTC mip levels)")
 
-    for index in (0, 52, 54, 65):
-        replace_entry(dictionary, data, entries, table_offset, index,
-                      bytes(files[index]), compressed)
+    for index in (0, 52, 54, 63, 65):
+        replace_entry(
+            dictionary,
+            data,
+            entries,
+            table_offset,
+            index,
+            bytes(files[index]),
+            compressed,
+        )
     OUTPUT.mkdir(parents=True, exist_ok=True)
     (OUTPUT / "global.dict").write_bytes(dictionary)
     (OUTPUT / "global.data").write_bytes(data)
     (OUTPUT / "global.patch").write_bytes(CLEAN.with_suffix(".patch").read_bytes())
-    _, emitted_data, emitted_entries, _, emitted_compressed = read_archive(OUTPUT / "global.dict")
-    for index in (0, 52, 54, 65):
-        actual = decompress_entry(emitted_data, emitted_entries[index], emitted_compressed)
+    _, emitted_data, emitted_entries, _, emitted_compressed = read_archive(
+        OUTPUT / "global.dict"
+    )
+    for index in (0, 52, 54, 63, 65):
+        actual = decompress_entry(
+            emitted_data, emitted_entries[index], emitted_compressed
+        )
         if actual != bytes(files[index]):
             raise AssertionError(f"entry {index} did not round-trip")
     print(f"wrote Mario replacement ({changed_meshes} mesh redirects) to {OUTPUT}")
