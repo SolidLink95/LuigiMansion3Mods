@@ -1,0 +1,146 @@
+{
+    "source_fbx": "../Mario_to_luigi6.fbx",
+    "mesh_targets": {
+		"submesh_6": {
+            "27": 6,
+            "28": 1,
+            "29": 6,
+            "30": 14
+        },
+		
+		
+        "submesh_7": {
+            "27": 7,
+            "28": 2,
+            "29": 3,
+            "30": 0
+        }, 
+		
+		
+		"submesh_5": {
+            "27": 5,
+            "28": 0,
+            "29": 9,
+            "30": 10
+        },
+		"submesh_14": {
+            "27": 14,
+            "28": 11,
+            "29": 8,
+            "30": 3
+		}
+    },
+    "disable_face_deformation": {
+        "27": true,
+        "28": true,
+        "29": true,
+        "30": true
+    },
+    "fallback_rigid_bone": 107,
+    "rigid_mesh_bones": {
+        "submesh_5": 107
+    },
+    "preserve_fbx_weights": [
+        "submesh_7"
+    ],
+    "purge_face_morphs_and_transforms": true,
+    "neutralize_auxiliary_vertex_data": true,
+    "pad_to_original_vertex_count": true,
+    "setup_reference": {
+        "purpose": "Complete reproducible setup for the validated Mario playable and cutscene replacement mod.",
+        "paths": {
+            "clean_archive": "../../clean/global.dict",
+            "source_fbx": "../Mario_to_luigi6.fbx",
+            "extracted_mesh_cache": "../Mario_to_luigi3.meshes.json",
+            "custom_texture_directory": ".",
+            "texture_redirects": "textures.json",
+            "generator": "../../res/build_mario_fbx_mod.py",
+            "fbx_extractor": "../../res/extract_fbx_replacement.py",
+            "generated_romfs": "../../_mods/mario_fbx_replacement/romfs",
+            "yuzu_romfs": "%USERPROFILE%/AppData/Roaming/yuzu/load/0100DCA0064A6000/mario_fbx_replacement/romfs",
+            "compact_installer_directory": "../../clean_tex/_gb_result/mario_playable",
+            "compact_installer_packager": "../../res/package_mario_global_sections.py"
+        },
+        "tools": {
+            "blender": "C:/Program Files/Blender Foundation/Blender 4.0/blender.exe",
+            "astc_encoder": "astcenc-avx2.exe",
+            "astc_encoder_note": "Available in PATH; known executable also at %USERPROFILE%/Documents/cli_tools/astcenc-avx2.exe."
+        },
+        "target_slots": {
+            "27": "playable high-detail",
+            "28": "playable alternate/runtime model",
+            "29": "cutscene model",
+            "30": "cutscene alternate/runtime model"
+        },
+        "skeleton_groups": {
+            "27": 27,
+            "28": 27,
+            "29": 28,
+            "30": 28
+        },
+        "fbx_objects": [
+            "submesh_5",
+            "submesh_6",
+            "submesh_7",
+            "submesh_14"
+        ],
+        "mesh_behavior": {
+            "submesh_5": {
+                "role": "eyes",
+                "geometry_normals_uv_topology": "Import directly from the current FBX.",
+                "weights": "Remove every FBX influence and rig every stored vertex only to semantic bone_107 at weight 1.0.",
+                "deformation": "Neutralize auxiliary vertex streams; B00A, B00B, and B00C are purged globally so no eye morph, UV animation, or other face transform remains."
+            },
+            "submesh_6": {
+                "geometry_normals_uv_topology": "Import directly from the current FBX.",
+                "weights": "Use nearest original target vertex weights, retain at most the two strongest influences, normalize to an exact float32 sum of 1.0, and use bone_107 only for invalid-weight fallback."
+            },
+            "submesh_7": {
+                "role": "face including lower lip",
+                "geometry_normals_uv_topology": "Import directly from the current FBX.",
+                "weights": "Preserve FBX weights without nearest-original remapping, truncation, redistribution, or normalization; abort unless every vertex already has at most two usable influences and their sum is within 0.0001 of 1.0."
+            },
+            "submesh_14": {
+                "role": "hat",
+                "geometry_normals_uv_topology": "Import directly from the current FBX.",
+                "weights": "Use nearest original target vertex weights with the two-strongest/exact-sum rule and bone_107 invalid-weight fallback.",
+                "deformation": "Do not neutralize its auxiliary streams because the established hat replacement is already correct."
+            }
+        },
+        "geometry_storage_rules": {
+            "vertex_count": "Abort the entire import if any FBX replacement has more vertices than its original target mesh.",
+            "padding": "For replaced non-hat meshes with fewer vertices, pad inactive tail vertices and skins to the target's original stored vertex count.",
+            "buffers": "Keep original index, skin, and vertex buffer addresses whenever payloads fit; relocate only an independently oversized stream into target-slot B005 free space.",
+            "indices": "Use 16-bit triangle indices and abort if any index is outside the source vertex count.",
+            "uv_conversion": "Store game V as 1.0 minus Blender V.",
+            "unknown_vertex_fields": "Copy from the nearest original target vertex before overwriting imported position, normal, and UV fields."
+        },
+        "facial_deformation_rules": {
+            "slots": [27, 28, 29, 30],
+            "empty_chunk_kinds": ["B00A", "B00B", "B00C"],
+            "auxiliary_streams": "Zero the third-to-fourth B004 auxiliary range and fill the fourth stream with FFFFFFFFFF7FFF7F sentinels for submeshes 5, 6, and 7."
+        },
+        "texture_rules": {
+            "source": "Use hash-named PNG files in this directory.",
+            "redirects": "Read textures.json first. If both its key and value hashes exist in Global, redirect all matching B006 material references and skip that PNG replacement.",
+            "fallback": "If a redirect key or value is unavailable in Global, retain the source hash and perform regular PNG replacement.",
+            "allocation_limit": "Encoded texture data must never exceed the original texture allocation; rescale or compress harder if necessary.",
+            "diffuse": "Encode through the established ASTC path with eight mip levels.",
+            "normal_maps": "Use the correct native normal-map format; never encode BC5 normal data as diffuse ASTC data."
+        },
+        "archive_rules": {
+            "changed_sections": [0, 52, 54, 65],
+            "do_not_grow_archive_entries": true,
+            "preserve_global_patch": true,
+            "required_roundtrip_sections": [0, 52, 54, 65]
+        },
+        "required_validation": [
+            "Validate all 16 mesh replacements and every triangle index bound.",
+            "Validate the configured per-mesh weight invariants.",
+            "Validate texture allocation sizes and material redirects.",
+            "Reopen the emitted archive and byte-compare decompressed sections 0, 52, 54, and 65.",
+            "Copy to the configured Yuzu ROMFS only after the build succeeds.",
+            "Regenerate the compact installer from the exact successful build and accept it only when installed global.dict and global.data SHA-256 hashes match that build."
+        ]
+    }
+}

@@ -1,0 +1,33 @@
+{
+    "source_fbx": "../Mario_to_luigi3.fbx",
+    "mesh_targets": {
+		"submesh_6": {
+            "27": 6,
+            "28": 1,
+            "29": 6,
+            "30": 14
+        },
+		
+		
+        "submesh_7": {
+            "27": 7,
+            "28": 2,
+            "29": 3,
+            "30": 0
+        }, 
+		
+		
+		"submesh_5": {
+            "27": 5,
+            "28": 0,
+            "29": 9,
+            "30": 10
+        },
+        "submesh_14": "keep_existing_replacement"
+    },
+    "disable_face_deformation": true,
+    "temporary_rigid_bone": 107,
+    "fallback_rigid_bone": 107,
+    "neutralize_auxiliary_vertex_data": true,
+    "pad_to_original_vertex_count": true
+}

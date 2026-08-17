@@ -1,0 +1,50 @@
+{
+  "format": "LM3 compact Global section delta v2",
+  "mod_name": "mario_playable",
+  "sections": [
+    {
+      "index": 0,
+      "file": "global_section_0.bin",
+      "section_size": 2073168,
+      "patch_size": 72,
+      "range_count": 12,
+      "covered_changed_bytes": 28,
+      "storage": "zlib",
+      "original_sha256": "218ae3004cbb779061dcdefe71631595cbaaf050df375e0fda7a82708c57f8a5",
+      "replacement_sha256": "212118c40c7cc2fad0f63dc310e6cd860f34b4dc64f15ea296503dbc41994d65"
+    },
+    {
+      "index": 52,
+      "file": "global_section_52.bin",
+      "section_size": 17973892,
+      "patch_size": 228,
+      "range_count": 28,
+      "covered_changed_bytes": 238,
+      "storage": "zlib",
+      "original_sha256": "f75087697eb667d7be530ed7e80be101f989c40799dc3efd540d66fbabdd344c",
+      "replacement_sha256": "c93311d541a81c91a3503c7220ac7ebcf0f8d7fb096a8a690f5a31ca092c4220"
+    },
+    {
+      "index": 54,
+      "file": "global_section_54.bin",
+      "section_size": 186523360,
+      "patch_size": 944063,
+      "range_count": 33473,
+      "covered_changed_bytes": 9361234,
+      "storage": "zlib",
+      "original_sha256": "bb5f49e9c4638ab5c4e692888b36b3e0b8f60432062c1b6cc50232c5be28b3b5",
+      "replacement_sha256": "eee20c61dd51446e7a70977a0b9f719b4d2bbb00ab2400af2bc96ba865d13210"
+    },
+    {
+      "index": 65,
+      "file": "global_section_65.bin",
+      "section_size": 438572544,
+      "patch_size": 2319037,
+      "range_count": 23544,
+      "covered_changed_bytes": 3487787,
+      "storage": "zlib",
+      "original_sha256": "9d84f8d24b113f40937f7838b1bc1e98c976cb2b04866660ee7e15f6757b282a",
+      "replacement_sha256": "6297f0317cda35580ffcc1272d310f286f960642ab40e37d92e01432a6bb539c"
+    }
+  ]
+}
