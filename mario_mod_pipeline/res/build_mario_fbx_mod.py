@@ -334,8 +334,10 @@ def tile_astc(linear, width, height):
     return bytes(output)
 
 
-def encode_bc4_block(values):
-    high, low = max(values), min(values)
+def encode_signed_bc4_block(values):
+    """Encode sixteen PNG channel values as one BC4_SNORM block."""
+    signed = [max(-127, min(127, round((value / 127.5 - 1.0) * 127.0))) for value in values]
+    high, low = max(signed), min(signed)
     if high == low:
         palette = [high] * 8
     else:
@@ -346,10 +348,10 @@ def encode_bc4_block(values):
     for index, value in enumerate(values):
         choice = min(range(8), key=lambda item: abs(palette[item] - value))
         bits |= choice << (index * 3)
-    return bytes((high, low)) + bits.to_bytes(6, "little")
+    return bytes((high & 0xFF, low & 0xFF)) + bits.to_bytes(6, "little")
 
 
-def encode_bc5(image):
+def encode_signed_bc5(image):
     width, height = image.size
     pixels = image.convert("RGB").load()
     width_blocks = (width + 3) // 4
@@ -361,8 +363,10 @@ def encode_bc5(image):
                 pixels[min(block_x * 4 + x, width - 1), min(block_y * 4 + y, height - 1)]
                 for y in range(4) for x in range(4)
             ]
-            linear.extend(encode_bc4_block([pixel[0] for pixel in block]))
-            linear.extend(encode_bc4_block([pixel[1] for pixel in block]))
+            # BC5 stores X and Y. The reconstructed blue channel in the PNG is
+            # intentionally ignored when converting back to the game format.
+            linear.extend(encode_signed_bc4_block([pixel[0] for pixel in block]))
+            linear.extend(encode_signed_bc4_block([pixel[1] for pixel in block]))
     gob_height = 1 if width <= 8 and height <= 8 else block_height(width, height)
     width_gobs = (width_blocks * 16 + 63) // 64
     rows = (height_blocks + 8 * gob_height - 1) // (8 * gob_height)
@@ -379,7 +383,7 @@ def encode_texture(png: Path, texture_format: int, original_payload: bytes):
     TEMP.mkdir(parents=True, exist_ok=True)
     source = Image.open(png).convert("RGBA")
     if texture_format == 0x16:
-        base = encode_bc5(source)
+        base = encode_signed_bc5(source)
         if len(base) > len(original_payload):
             raise ValueError(f"BC5 base level exceeds the allocation for {png.name}")
         # LM3 uses a proprietary packed BC5 mip tail. Preserve that tail and

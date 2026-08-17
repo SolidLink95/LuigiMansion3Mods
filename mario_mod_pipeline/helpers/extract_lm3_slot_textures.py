@@ -79,6 +79,63 @@ def untile(data: bytes, width_blocks: int, height_blocks: int, block_size: int, 
     return bytes(output)
 
 
+def decode_signed_bc4_block(block: bytes) -> list[float]:
+    """Decode one BC4_SNORM block to sixteen values in [-1, 1]."""
+    first = max(-127, int.from_bytes(block[0:1], "little", signed=True)) / 127.0
+    second = max(-127, int.from_bytes(block[1:2], "little", signed=True)) / 127.0
+    if first > second:
+        palette = [first, second] + [
+            ((7 - step) * first + step * second) / 7.0
+            for step in range(1, 7)
+        ]
+    else:
+        palette = [first, second] + [
+            ((5 - step) * first + step * second) / 5.0
+            for step in range(1, 5)
+        ] + [-1.0, 1.0]
+    indices = int.from_bytes(block[2:8], "little")
+    return [palette[(indices >> (pixel * 3)) & 7] for pixel in range(16)]
+
+
+def decode_signed_bc5(data: bytes, width: int, height: int) -> Image.Image:
+    """Decode BC5_SNORM and reconstruct positive Z for an editable normal PNG."""
+    width_blocks = (width + 3) // 4
+    height_blocks = (height + 3) // 4
+    linear = untile(
+        data, width_blocks, height_blocks, 16,
+        block_height(width, height, 0x16),
+    )
+    pixels = [(128, 128, 255, 255)] * (width * height)
+    for block_y in range(height_blocks):
+        for block_x in range(width_blocks):
+            offset = (block_y * width_blocks + block_x) * 16
+            xs = decode_signed_bc4_block(linear[offset:offset + 8])
+            ys = decode_signed_bc4_block(linear[offset + 8:offset + 16])
+            for local_y in range(4):
+                for local_x in range(4):
+                    x = block_x * 4 + local_x
+                    y = block_y * 4 + local_y
+                    if x >= width or y >= height:
+                        continue
+                    index = local_y * 4 + local_x
+                    red = round((xs[index] + 1.0) * 127.5)
+                    green = round((ys[index] + 1.0) * 127.5)
+                    # Match the selected PNG convention exactly: reconstruct
+                    # Z from the quantized 8-bit X/Y channels users will edit.
+                    normal_x = red / 127.5 - 1.0
+                    normal_y = green / 127.5 - 1.0
+                    normal_z = max(0.0, 1.0 - normal_x ** 2 - normal_y ** 2) ** 0.5
+                    pixels[y * width + x] = (
+                        red,
+                        green,
+                        round((normal_z + 1.0) * 127.5),
+                        255,
+                    )
+    image = Image.new("RGBA", (width, height))
+    image.putdata(pixels)
+    return image
+
+
 def decode_texture(header: bytes, data: bytes) -> Image.Image:
     width, height = struct.unpack_from("<HH", header, 4)
     # Current LM3 headers store the GPU format at byte 12. Byte 8 is not the
@@ -118,6 +175,8 @@ def decode_texture(header: bytes, data: bytes) -> Image.Image:
             height = max(1, height // 2)
         width_blocks = (width + 3) // 4
         height_blocks = (height + 3) // 4
+        if texture_format == 0x16:
+            return decode_signed_bc5(data, width, height)
         linear = untile(data, width_blocks, height_blocks, 16, block_height(width, height, texture_format))
         decoded = texture2ddecoder.decode_bc5(linear, width, height)
     else:
