@@ -1,0 +1,10 @@
+{
+    "TMP": "../tmp",
+    "CONFIG": "config/capnweege_armor_only",
+    "DEFAULT_ASSETS": "capnweege",
+    "MOD_NAME": "capnweege_hd_playable_face_works",
+    "MOD_DEST_PATH": "_mods/capnweege_hd_playable_face_works/romfs",
+    "SKIP_PACKAGE": true,
+    "VERIFY": false,
+    "FBX": "just_armor_capnweege.fbx"
+}

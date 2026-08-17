@@ -19,7 +19,14 @@ import tempfile
 from pathlib import Path
 
 CWD = Path(__file__).resolve().parent
-JSON_INPUT = CWD / "green_knight.json"
+if "--params" in sys.argv:
+    params_index = sys.argv.index("--params")
+    try:
+        JSON_INPUT = Path(sys.argv[params_index + 1]).resolve()
+    except IndexError as error:
+        raise ValueError("--params requires a JSON path") from error
+else:
+    JSON_INPUT = CWD / "green_knight.json"
 # JSON_INPUT = CWD / "params_mario.json"
 
 
@@ -107,6 +114,7 @@ def parse_skeleton_groups(values: list[str]) -> dict[int, int]:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("--params", type=path, default=JSON_INPUT)
     result.add_argument("--clean-archive", type=path, default=ROMFS / "global.dict")
     result.add_argument("--source-fbx", type=path, default=FBX)
     result.add_argument(

@@ -1,0 +1,70 @@
+{
+    "source_fbx": "../../tmp/capnweege/just_armor_capnweege.fbx",
+    "mesh_targets": {
+        "body": {
+            "27": 12,
+            "28": 7,
+            "29": 16,
+            "30": 13
+        },
+        "hat": {
+            "27": 14,
+            "28": 11,
+            "29": 8,
+            "30": 3
+        },
+        "boot": {
+            "29": 0,
+            "30": 1
+        },
+        "hand": {
+            "29": 12,
+            "30": 4
+        }
+    },
+    "disable_face_deformation": false,
+    "neutralize_auxiliary_vertex_data": false,
+    "pad_to_original_vertex_count": true,
+    "fallback_rigid_bone": 107,
+    "rigid_mesh_bones": {},
+    "preserve_fbx_weights": ["body"],
+    "truncate_preserved_fbx_weights": ["body"],
+    "material_swap": {
+        "source_archive": "Scarescraper/Persistent.dict",
+        "source_slot": 58,
+        "source_mesh": 4,
+        "target_meshes": {
+            "27": [12, 14],
+            "28": [7, 11],
+            "29": [16, 8],
+            "30": [13, 3]
+        },
+        "texture_refs": {
+            "27": {
+                "5D2EF9A7": "1A783B98",
+                "5D775BAB": "F7B6BF2B",
+                "BA12DCB6": "198CFD0B",
+                "5D1CE126": "1AC09D9C"
+            },
+            "28": {
+                "5D2EF9A7": "1A783B98",
+                "5D775BAB": "F7B6BF2B",
+                "BA12DCB6": "198CFD0B",
+                "5D1CE126": "1AC09D9C"
+            },
+            "29": {
+                "5D2EF9A7": "1A783B98",
+                "5D775BAB": "F7B6BF2B",
+                "BA12DCB6": "198CFD0B",
+                "5D1CE126": "1AC09D9C"
+            },
+            "30": {
+                "5D2EF9A7": "1A783B98",
+                "5D775BAB": "F7B6BF2B",
+                "BA12DCB6": "198CFD0B",
+                "5D1CE126": "1AC09D9C"
+            }
+        }
+    },
+    "preserve_texture_hashes": ["90D71FE0"]
+}

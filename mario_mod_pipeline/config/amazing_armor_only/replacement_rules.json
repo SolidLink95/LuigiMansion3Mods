@@ -1,0 +1,34 @@
+{
+    "source_fbx": "../../tmp/amazing/just_armor_amazing.fbx",
+    "mesh_targets": {
+        "body": {"27": 12, "28": 7, "29": 16, "30": 13},
+        "hat": {"27": 14, "28": 11, "29": 8, "30": 3},
+        "boot": {"29": 0, "30": 1},
+        "hand": {"29": 12, "30": 4}
+    },
+    "disable_face_deformation": false,
+    "neutralize_auxiliary_vertex_data": false,
+    "pad_to_original_vertex_count": true,
+    "fallback_rigid_bone": 107,
+    "rigid_mesh_bones": {},
+    "preserve_fbx_weights": ["body"],
+    "truncate_preserved_fbx_weights": ["body"],
+    "material_swap": {
+        "source_archive": "Scarescraper/Persistent.dict",
+        "source_slot": 42,
+        "source_mesh": 4,
+        "target_meshes": {
+            "27": [12, 14],
+            "28": [7, 11],
+            "29": [16, 8],
+            "30": [13, 3]
+        },
+        "texture_refs": {
+            "27": {"8F9521FB": "1A783B98", "8FDD83FF": "F7B6BF2B", "8EA9E36E": "198CFD0B"},
+            "28": {"8F9521FB": "1A783B98", "8FDD83FF": "F7B6BF2B", "8EA9E36E": "198CFD0B"},
+            "29": {"8F9521FB": "1A783B98", "8FDD83FF": "F7B6BF2B", "8EA9E36E": "198CFD0B"},
+            "30": {"8F9521FB": "1A783B98", "8FDD83FF": "F7B6BF2B", "8EA9E36E": "198CFD0B"}
+        }
+    },
+    "preserve_texture_hashes": ["90D71FE0"]
+}

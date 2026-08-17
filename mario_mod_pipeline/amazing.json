@@ -1,0 +1,10 @@
+{
+    "TMP": "../tmp",
+    "CONFIG": "config/amazing_armor_only",
+    "DEFAULT_ASSETS": "amazing",
+    "MOD_NAME": "amazing_luigi_hd_playable_face_works",
+    "MOD_DEST_PATH": "_mods/amazing_luigi_hd_playable_face_works/romfs",
+    "SKIP_PACKAGE": true,
+    "VERIFY": false,
+    "FBX": "just_armor_amazing.fbx"
+}

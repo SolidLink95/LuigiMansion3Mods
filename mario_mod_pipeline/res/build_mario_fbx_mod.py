@@ -292,7 +292,7 @@ def skeleton_id_to_hash(files, group):
 
 def skin_from_fbx(
     vertex_weights, model, id_to_hash, file52, preserve_weights=False,
-    bone_parents=None,
+    bone_parents=None, truncate_preserved=False,
 ):
     b103 = next(record for record in model if record.kind == 0xB103)
     hashes = [
@@ -333,12 +333,12 @@ def skin_from_fbx(
             if math.isfinite(weight) and weight > 1e-8
         ]
         resolved.sort(key=lambda item: item[1], reverse=True)
-        if preserve_weights and len(resolved) > 2:
+        if preserve_weights and len(resolved) > 2 and not truncate_preserved:
             raise ValueError(
                 f"FBX vertex {vertex_index} has {len(resolved)} usable weights; "
                 "preserved-weight meshes permit at most two"
             )
-        if not preserve_weights:
+        if not preserve_weights or truncate_preserved:
             resolved = resolved[:2]
         total = sum(weight for _index, weight in resolved)
         if total <= 1e-8:
@@ -348,7 +348,7 @@ def skin_from_fbx(
         # influence between them in their existing proportion (equivalent to
         # normalizing the retained set), then repair float32 rounding on the
         # dominant influence only.
-        if preserve_weights:
+        if preserve_weights and not truncate_preserved:
             if abs(total - 1.0) > 1e-4:
                 raise ValueError(
                     f"FBX vertex {vertex_index} preserved weights sum to {total}, not 1.0"
@@ -780,14 +780,22 @@ def main():
                     f"{name} cannot preserve FBX weights and use rigid_mesh_bones"
                 )
             if preserve_fbx_weights:
+                truncate_rule = replacement_rules.get(
+                    "truncate_preserved_fbx_weights", []
+                )
+                truncate_preserved = name in truncate_rule
                 skin_payload = skin_from_fbx(
                     weights, models[slot], id_to_hash, files[52],
                     preserve_weights=True,
                     bone_parents=mesh_data.get("_bone_parents", {}),
+                    truncate_preserved=truncate_preserved,
                 )
                 weight_mode = (
-                    "preserved FBX weights (validated; missing bones merged to "
-                    "closest available parent)"
+                    "preserved FBX bones with two-strongest normalized weights; "
+                    "missing bones merged to closest available parent"
+                    if truncate_preserved
+                    else "preserved FBX weights (validated; missing bones merged "
+                    "to closest available parent)"
                 )
             elif rigid_bone is None:
                 fallback_record = None

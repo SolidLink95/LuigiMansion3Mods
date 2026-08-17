@@ -1,0 +1,39 @@
+{
+  "format": "LM3 compact Global section delta v2",
+  "mod_name": "amazing_luigi_hd_playable_face_works",
+  "sections": [
+    {
+      "index": 52,
+      "file": "global_section_52.bin",
+      "section_size": 17973892,
+      "patch_size": 222,
+      "range_count": 30,
+      "covered_changed_bytes": 208,
+      "storage": "zlib",
+      "original_sha256": "f75087697eb667d7be530ed7e80be101f989c40799dc3efd540d66fbabdd344c",
+      "replacement_sha256": "f66d7a1ae1fd3bb8efa3a1a8437b5e329ed2fb57d63ab52a40d4122dc0952e36"
+    },
+    {
+      "index": 54,
+      "file": "global_section_54.bin",
+      "section_size": 186523360,
+      "patch_size": 806532,
+      "range_count": 7716,
+      "covered_changed_bytes": 2859590,
+      "storage": "zlib",
+      "original_sha256": "bb5f49e9c4638ab5c4e692888b36b3e0b8f60432062c1b6cc50232c5be28b3b5",
+      "replacement_sha256": "1e4af045d3dfe212a45253bf0f67428284ced869c0d2d93f3a1fbcb7c2ed3340"
+    },
+    {
+      "index": 65,
+      "file": "global_section_65.bin",
+      "section_size": 438572544,
+      "patch_size": 2094650,
+      "range_count": 784,
+      "covered_changed_bytes": 2580491,
+      "storage": "zlib",
+      "original_sha256": "9d84f8d24b113f40937f7838b1bc1e98c976cb2b04866660ee7e15f6757b282a",
+      "replacement_sha256": "96e5ad9325ade862223284b1881526613a7d7c531e0c36f8fb46cdb38ff00018"
+    }
+  ]
+}
