@@ -1,10 +1,9 @@
-"""Install the packaged Mario replacement sections into an LM3 ROMFS Global archive."""
+"""Build the packaged Mario replacement in a separate mod directory."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import struct
 import sys
 import zlib
@@ -106,9 +105,9 @@ def main() -> int:
     romfs = Path(sys.argv[1]).expanduser()
     if not romfs.is_dir():
         return fail(f"ROMFS path is not a directory: {romfs}")
-    dict_path = romfs / "global.dict"
-    data_path = romfs / "global.data"
-    if not dict_path.is_file() or not data_path.is_file():
+    source_dict_path = romfs / "global.dict"
+    source_data_path = romfs / "global.data"
+    if not source_dict_path.is_file() or not source_data_path.is_file():
         return fail("ROMFS path must contain global.dict and global.data")
     if not MANIFEST.is_file():
         return fail(f"package manifest is missing: {MANIFEST.name}")
@@ -116,14 +115,21 @@ def main() -> int:
     try:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         mod_name = manifest.get("mod_name", "playable_mod")
+        output = PACKAGE_DIR / mod_name / "romfs"
+        try:
+            output.resolve().relative_to(romfs.resolve())
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the supplied ROMFS path")
         if manifest.get("format") == "LM3 compact physical Global delta v3":
             prepared_files = []
             for item in manifest["files"]:
                 target = item["target"]
                 if target not in ("global.dict", "global.data"):
                     raise ValueError(f"unsupported target file: {target}")
-                target_path = romfs / target
-                current = target_path.read_bytes()
+                source_path = romfs / target
+                current = source_path.read_bytes()
                 current_hash = hashlib.sha256(current).hexdigest()
                 allowed = {item["original_sha256"], item["replacement_sha256"]}
                 if current_hash not in allowed:
@@ -134,18 +140,17 @@ def main() -> int:
                 replacement = apply_patch(current, patch_path.read_bytes(), int(item["file_size"]))
                 if hashlib.sha256(replacement).hexdigest() != item["replacement_sha256"]:
                     raise ValueError(f"{target} delta failed its SHA-256 result check")
-                prepared_files.append((target_path, replacement))
-            temporary = []
-            for target_path, replacement in prepared_files:
-                temp = target_path.with_name(f"{target_path.name}.{mod_name}.tmp")
-                temp.write_bytes(replacement)
-                temporary.append((temp, target_path))
-            for temp, target_path in temporary:
-                os.replace(temp, target_path)
-            print(f"installed {mod_name} into {romfs.resolve()}")
+                prepared_files.append((target, replacement))
+            output.mkdir(parents=True, exist_ok=True)
+            for target, replacement in prepared_files:
+                (output / target).write_bytes(replacement)
+            patch_path = romfs / "global.patch"
+            if patch_path.is_file():
+                (output / "global.patch").write_bytes(patch_path.read_bytes())
+            print(f"created {mod_name} in {output.resolve()}")
             return 0
 
-        dictionary, data, entries, table_offset, compressed = read_archive(dict_path)
+        dictionary, data, entries, table_offset, compressed = read_archive(source_dict_path)
         prepared = []
         for item in manifest["sections"]:
             index = int(item["index"])
@@ -184,16 +189,16 @@ def main() -> int:
                 len(replacement), len(packed),
             )
 
-        dict_temp = dict_path.with_name(f"global.dict.{mod_name}.tmp")
-        data_temp = data_path.with_name(f"global.data.{mod_name}.tmp")
-        dict_temp.write_bytes(dictionary)
-        data_temp.write_bytes(data)
-        os.replace(data_temp, data_path)
-        os.replace(dict_temp, dict_path)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "global.dict").write_bytes(dictionary)
+        (output / "global.data").write_bytes(data)
+        patch_path = romfs / "global.patch"
+        if patch_path.is_file():
+            (output / "global.patch").write_bytes(patch_path.read_bytes())
     except (KeyError, OSError, ValueError, zlib.error, json.JSONDecodeError) as error:
         return fail(str(error))
 
-    print(f"installed {len(prepared)} {mod_name} Global sections into {romfs.resolve()}")
+    print(f"created {mod_name} in {output.resolve()}")
     return 0
 
 

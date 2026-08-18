@@ -28,23 +28,23 @@
       "index": 54,
       "file": "global_section_54.bin",
       "section_size": 186523360,
-      "patch_size": 944063,
+      "patch_size": 944057,
       "range_count": 33473,
       "covered_changed_bytes": 9361234,
       "storage": "zlib",
       "original_sha256": "bb5f49e9c4638ab5c4e692888b36b3e0b8f60432062c1b6cc50232c5be28b3b5",
-      "replacement_sha256": "eee20c61dd51446e7a70977a0b9f719b4d2bbb00ab2400af2bc96ba865d13210"
+      "replacement_sha256": "656e277dbd95c7dedb8b2d5a16cf3acd3242b779c8d27136f3aa736f6e9363a3"
     },
     {
       "index": 65,
       "file": "global_section_65.bin",
       "section_size": 438572544,
-      "patch_size": 2319037,
-      "range_count": 23544,
-      "covered_changed_bytes": 3487787,
+      "patch_size": 2356779,
+      "range_count": 24057,
+      "covered_changed_bytes": 3480739,
       "storage": "zlib",
       "original_sha256": "9d84f8d24b113f40937f7838b1bc1e98c976cb2b04866660ee7e15f6757b282a",
-      "replacement_sha256": "6297f0317cda35580ffcc1272d310f286f960642ab40e37d92e01432a6bb539c"
+      "replacement_sha256": "3c1813057a65354863cdd0fa92b00cd6349b0e9a11cb60dbc3ec8b794351c4ef"
     }
   ]
 }

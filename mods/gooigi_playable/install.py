@@ -58,9 +58,16 @@ def main() -> int:
 
         from build_global_slot_clone import build
 
+        output = PACKAGE_DIR / "gooigi_playable" / "romfs"
+        try:
+            output.resolve().relative_to(romfs.resolve())
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the supplied ROMFS path")
         build(
             romfs / "global.dict",
-            PACKAGE_DIR / "gooigi_playable" / "romfs",
+            output,
             source_slot=24,
         )
     except (KeyError, OSError, ValueError, AssertionError) as error:

@@ -59,9 +59,16 @@ def run(
         import lm3_costume_mod_builder as builder
 
         package_dir = Path(__file__).resolve().parent
+        output = package_dir / mod_name / "romfs"
+        try:
+            output.resolve().relative_to(romfs.resolve())
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the supplied ROMFS path")
         builder.GLOBAL = romfs / "global.dict"
         builder.PERSISTENT = romfs / "Scarescraper" / "Persistent.dict"
-        builder.OUTPUT = package_dir / mod_name / "romfs"
+        builder.OUTPUT = output
         builder.TARGET_SOURCE_PAIRS = tuple(target_source_pairs)
         builder.TARGETS = (27, 28, 29, 30)
         builder.SOURCES = tuple(sources)

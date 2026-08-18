@@ -59,9 +59,16 @@ def main() -> int:
 
         import lm3_costume_mod_builder as builder
 
+        output = PACKAGE_DIR / "N64_mummigi_playable" / "romfs"
+        try:
+            output.resolve().relative_to(romfs.resolve())
+        except ValueError:
+            pass
+        else:
+            raise ValueError("output directory must be outside the supplied ROMFS path")
         builder.GLOBAL = romfs / "global.dict"
         builder.PERSISTENT = romfs / "Scarescraper" / "Persistent.dict"
-        builder.OUTPUT = PACKAGE_DIR / "N64_mummigi_playable" / "romfs"
+        builder.OUTPUT = output
         builder.TARGET_SOURCE_PAIRS = tuple((target, 56) for target in (27, 28, 29, 30))
         builder.TARGETS = (27, 28, 29, 30)
         builder.SOURCES = (56,)
