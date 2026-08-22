@@ -1,0 +1,64 @@
+{
+  "format": "LM3 expanded Global archive delta v1",
+  "mod_name": "ghost_luigi",
+  "sections": [
+    {
+      "index": 0,
+      "mode": "patch",
+      "file": "global_section_0.bin",
+      "section_size": 2073168,
+      "range_count": 19,
+      "covered_changed_bytes": 256,
+      "original_sha256": "218ae3004cbb779061dcdefe71631595cbaaf050df375e0fda7a82708c57f8a5",
+      "replacement_sha256": "fa9c00c266c7135a13ade13d69b12e7caa0da8815d49b1e31631b855607621c3"
+    },
+    {
+      "index": 52,
+      "mode": "patch",
+      "file": "global_section_52.bin",
+      "section_size": 17973892,
+      "range_count": 116,
+      "covered_changed_bytes": 12124,
+      "original_sha256": "f75087697eb667d7be530ed7e80be101f989c40799dc3efd540d66fbabdd344c",
+      "replacement_sha256": "1c0684217b48b79eebe154d8233c25d20e1005dcb59b097e621d2acedc015be8"
+    },
+    {
+      "index": 54,
+      "mode": "patch",
+      "file": "global_section_54.bin",
+      "section_size": 186523360,
+      "range_count": 55056,
+      "covered_changed_bytes": 210650,
+      "original_sha256": "bb5f49e9c4638ab5c4e692888b36b3e0b8f60432062c1b6cc50232c5be28b3b5",
+      "replacement_sha256": "7f40712671f360d7a848729943301331c8fd968ba6bdcbbb93ed1fd70a40773a"
+    },
+    {
+      "index": 65,
+      "mode": "patch",
+      "file": "global_section_65.bin",
+      "section_size": 438572544,
+      "range_count": 2666,
+      "covered_changed_bytes": 3061457,
+      "original_sha256": "9d84f8d24b113f40937f7838b1bc1e98c976cb2b04866660ee7e15f6757b282a",
+      "replacement_sha256": "a685e12670e5ec16fc2fdbf986156016e6f0d185262b07b776dde5b785644481"
+    }
+  ],
+  "patch": {
+    "file_size": 102961845,
+    "original_sha256": "5266c24437b51a627e42b3a7ca176160eb234250f0bec2cd8ecd716de0b3edc1",
+    "replacement_sha256": "8cf93451dd86869df43206426d33bf84bbcaf98dc1501a76b00d879e37263a76",
+    "header": {
+      "file": "global_patch_header.bin",
+      "size": 2728
+    },
+    "table": {
+      "file": "global_patch_table.bin",
+      "first": 2728,
+      "stride": 516880,
+      "count": 13,
+      "slot_sha256": "1b47acea79254ad2690ccb045b41ebaeb0207ff51b379d44e3409dd3251fb8bb"
+    }
+  },
+  "built_dict_sha256": "db9316c652da69e2e03707e05d560e8764c8fd421fe29349387c70be19c99155",
+  "built_data_sha256": "9e01a6051197076423c25ba9b1f1a32b7549eeb679d920b2ab636f2658404bfb"
+}

@@ -13,8 +13,8 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[3]
-sys.path.insert(0, str(ROOT / "tmp" / "ml3"))
+ROOT = HERE.parents[1]
+sys.path.insert(0, str(HERE.parent / "helpers"))
 from lm3_slot_swap import decompress_entry, read_archive
 
 
@@ -87,8 +87,10 @@ def encode_patch(before: bytes, after: bytes):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--original", type=Path, default=ORIGINAL)
     parser.add_argument("--built", type=Path, default=BUILT)
     parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--installer-template", type=Path, default=INSTALLER_TEMPLATE)
     parser.add_argument("--mod-name", default="mario_playable")
     parser.add_argument(
         "--sections",
@@ -101,7 +103,7 @@ def main() -> None:
     args.output.mkdir(parents=True, exist_ok=True)
     for stale in list(args.output.glob("global_section_*.bin")) + list(args.output.glob("global_*.delta.bin")):
         stale.unlink()
-    _clean_dictionary, clean_data, clean_entries, clean_compressed = archive_parts(ORIGINAL)
+    _clean_dictionary, clean_data, clean_entries, clean_compressed = archive_parts(args.original)
     _built_dictionary, built_data, built_entries, built_compressed = archive_parts(args.built)
     if clean_compressed != built_compressed or len(clean_entries) != len(built_entries):
         raise ValueError("built Global archive structure differs from the supported clean archive")
@@ -140,8 +142,8 @@ def main() -> None:
         encoding="utf-8",
     )
     installer = args.output / f"install_{args.mod_name}.py"
-    if INSTALLER_TEMPLATE.resolve() != installer.resolve():
-        shutil.copyfile(INSTALLER_TEMPLATE, installer)
+    if args.installer_template.resolve() != installer.resolve():
+        shutil.copyfile(args.installer_template, installer)
     print(
         f"packaged {args.mod_name}: "
         + ", ".join(f'section {item["index"]}={item["patch_size"]} bytes' for item in sections)

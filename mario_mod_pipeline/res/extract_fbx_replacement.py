@@ -38,23 +38,46 @@ for object_name in mesh_names:
     uv_layer = mesh.uv_layers.active
     if uv_layer is None:
         raise RuntimeError(f"{object_name} has no active UV layer")
-    uvs = [None] * len(mesh.vertices)
-    for loop in mesh.loops:
-        uv = list(uv_layer.data[loop.index].uv)
-        previous = uvs[loop.vertex_index]
-        if previous is not None and any(abs(a - b) > 1e-5 for a, b in zip(previous, uv)):
-            raise RuntimeError(f"{object_name} vertex {loop.vertex_index} has split UVs")
-        uvs[loop.vertex_index] = uv
     names = [group.name for group in obj.vertex_groups]
+    positions = [list(vertex.co) for vertex in mesh.vertices]
+    normals = [list(vertex.normal) for vertex in mesh.vertices]
+    weights = [
+        [[names[item.group], item.weight] for item in vertex.groups if item.weight > 1e-6]
+        for vertex in mesh.vertices
+    ]
+    uvs = [None] * len(mesh.vertices)
+    split_vertices = {}
+    faces = []
+    for triangle in mesh.loop_triangles:
+        face = []
+        for loop_index in triangle.loops:
+            loop = mesh.loops[loop_index]
+            vertex_index = loop.vertex_index
+            uv = list(uv_layer.data[loop_index].uv)
+            previous = uvs[vertex_index]
+            if previous is None:
+                uvs[vertex_index] = uv
+            elif any(abs(a - b) > 1e-5 for a, b in zip(previous, uv)):
+                key = (vertex_index, *uv)
+                if key not in split_vertices:
+                    split_vertices[key] = len(positions)
+                    positions.append(positions[vertex_index])
+                    normals.append(normals[vertex_index])
+                    weights.append(weights[vertex_index])
+                    uvs.append(uv)
+                vertex_index = split_vertices[key]
+            face.append(vertex_index)
+        faces.append(face)
     result[object_name] = {
-        "positions": [list(vertex.co) for vertex in mesh.vertices],
-        "normals": [list(vertex.normal) for vertex in mesh.vertices],
+        "positions": positions,
+        "normals": normals,
         "uvs": uvs,
-        "faces": [list(triangle.vertices) for triangle in mesh.loop_triangles],
-        "weights": [
-            [[names[item.group], item.weight] for item in vertex.groups if item.weight > 1e-6]
-            for vertex in mesh.vertices
-        ],
+        "faces": faces,
+        "weights": weights,
     }
-    print(f"extracted {object_name}: {len(mesh.vertices)} vertices, {len(mesh.loop_triangles)} triangles")
+    print(
+        f"extracted {object_name}: {len(positions)} vertices "
+        f"({len(split_vertices)} UV seam duplicates), "
+        f"{len(mesh.loop_triangles)} triangles"
+    )
 output.write_text(json.dumps(result, separators=(",", ":")), encoding="utf-8")
